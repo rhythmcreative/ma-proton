@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ma-proton: Proton translation engine CLI for macOS
+# ==============================================================================
+
+set -e
+
+# Resolve physical path even when executed through symlinks
+REAL_PATH="$(/usr/bin/python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${REAL_PATH}")/.." && pwd)"
+
+export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
+
+exec /usr/bin/python3 -m ma_proton.cli "$@"

@@ -1,0 +1,9 @@
+{
+    "name": "DirectX 9 Legacy Games",
+    "graphics_backend": "dxvk",
+    "sync_mode": "msync",
+    "metal_hud": false,
+    "dxvk_hud": false,
+    "retina_mode": false,
+    "windows_version": "win7"
+}

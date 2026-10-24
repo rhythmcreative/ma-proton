@@ -1,0 +1,11 @@
+{
+    "name": "Cyberpunk 2077",
+    "graphics_backend": "gptk",
+    "sync_mode": "msync",
+    "metal_hud": true,
+    "retina_mode": true,
+    "windows_version": "win10",
+    "custom_env": {
+        "WINE_LARGE_ADDRESS_AWARE": "1"
+    }
+}

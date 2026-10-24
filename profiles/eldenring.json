@@ -1,0 +1,8 @@
+{
+    "name": "Elden Ring",
+    "graphics_backend": "gptk",
+    "sync_mode": "msync",
+    "metal_hud": false,
+    "retina_mode": true,
+    "windows_version": "win10"
+}
