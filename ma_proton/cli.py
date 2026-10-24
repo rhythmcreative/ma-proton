@@ -164,6 +164,7 @@ def handle_steam(args, unknown_args):
 
     runtime_info = RuntimeManager.get_best_runtime(cfg.get("runtime"))
     env = build_full_env(cfg, runtime_info, prefix_path, backend, sync_mode, hud)
+    env["MA_PROTON_SCALE"] = str(getattr(args, "scale", "2.0") or "2.0")
 
     prefix_mgr = PrefixManager(prefix_path, runtime_info, env)
     prefix_mgr.initialize()
@@ -236,6 +237,7 @@ def main():
     steam_parser.add_argument("--backend", "-b", choices=["gptk", "dxmt", "dxvk", "wined3d"], help="Motor de traducción gráfica")
     steam_parser.add_argument("--sync", "-s", choices=["msync", "esync", "server"], help="Modo de sincronización (MSync)")
     steam_parser.add_argument("--hud", action="store_true", help="Activar Metal Performance HUD")
+    steam_parser.add_argument("--scale", default="2.0", help="Factor de escala para pantallas Retina/4K (ej. 1.5, 2.0)")
 
     parsed, unknown = parser.parse_known_args()
 

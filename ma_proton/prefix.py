@@ -46,13 +46,17 @@ class PrefixManager:
         self.apply_windows_version("win10")
         return self.is_initialized()
 
-    def apply_retina_tweak(self):
-        """Configures Mac Driver Retina mode in Wine registry for high-DPI displays."""
+    def apply_retina_tweak(self, dpi: int = 192):
+        """Configures Mac Driver Retina mode and high-DPI scaling in Wine registry."""
         reg_file = self.prefix_path / "retina_mode.reg"
+        # 192 dpi = 200% (Retina scale), 144 dpi = 150%, 96 dpi = 100%
+        dpi_hex = f"{dpi:08x}"
         reg_content = (
             "Windows Registry Editor Version 5.00\n\n"
             "[HKEY_CURRENT_USER\\Software\\Wine\\Mac Driver]\n"
-            '"RetinaMode"="Y"\n'
+            '"RetinaMode"="Y"\n\n'
+            "[HKEY_CURRENT_USER\\Control Panel\\Desktop]\n"
+            f'"LogPixels"=dword:{dpi_hex}\n'
         )
         try:
             with open(reg_file, "w", encoding="utf-8") as f:
