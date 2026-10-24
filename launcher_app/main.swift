@@ -1,422 +1,412 @@
 import AppKit
 import Foundation
 
-class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
+// MARK: - Main Application Controller
+final class AppDelegate: NSObject, NSApplicationDelegate, NSToolbarDelegate {
     var window: NSWindow!
     
-    // Status & Controls
-    var statusLabel: NSTextField!
-    var d3dMetalCheck: NSButton!
-    var msyncCheck: NSButton!
-    var hudCheck: NSButton!
-    var scalePopUp: NSPopUpButton!
-    var backendPopUp: NSPopUpButton!
+    // UI References
+    var statusText: NSTextField!
+    var scalePicker: NSPopUpButton!
+    var enginePicker: NSPopUpButton!
+    var hudCheckbox: NSButton!
+    var msyncCheckbox: NSButton!
+    var d3dMetalCheckbox: NSButton!
     
-    let maProtonBin = "/Users/rhythmcreative/.local/bin/ma-proton"
+    let runnerBinary = "/Users/rhythmcreative/.local/bin/ma-proton"
     let prefixPath = NSHomeDirectory() + "/.ma-proton/prefixes/default"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let width: CGFloat = 980
-        let height: CGFloat = 620
-        
-        let rect = NSRect(x: 0, y: 0, width: width, height: height)
+        setupWindow()
+    }
+
+    func setupWindow() {
+        let width: CGFloat = 860
+        let height: CGFloat = 580
+
+        let contentRect = NSRect(x: 0, y: 0, width: width, height: height)
         window = NSWindow(
-            contentRect: rect,
+            contentRect: contentRect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = "ma-proton"
-        window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 880, height: 560)
+        window.minSize = NSSize(width: 800, height: 520)
         window.isReleasedWhenClosed = false
 
-        let splitView = NSSplitView(frame: rect)
+        // Setup unified toolbar
+        let toolbar = NSToolbar(identifier: "MainToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconAndLabel
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+
+        // Root View with Sidebar and Main Content
+        let splitView = NSSplitView(frame: contentRect)
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.autoresizingMask = [.width, .height]
         window.contentView = splitView
 
-        // 1. Left Sidebar (Bottles)
-        let leftSidebar = buildSidebarView(width: 210, height: height)
-        splitView.addSubview(leftSidebar)
+        // 1. Sidebar (Source List)
+        let sidebar = createSidebar(width: 220, height: height)
+        splitView.addSubview(sidebar)
 
-        // 2. Center Panel (Installed Programs Grid)
-        let centerPanel = buildCenterView(width: 510, height: height)
-        splitView.addSubview(centerPanel)
-
-        // 3. Right Inspector (Settings & Tools)
-        let rightInspector = buildInspectorView(width: 260, height: height)
-        splitView.addSubview(rightInspector)
+        // 2. Main Detail View
+        let mainDetail = createMainDetail(width: 640, height: height)
+        splitView.addSubview(mainDetail)
 
         splitView.setPosition(210, ofDividerAt: 0)
-        splitView.setPosition(720, ofDividerAt: 1)
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // ==========================================
-    // 1. LEFT SIDEBAR: BOTTLES
-    // ==========================================
-    func buildSidebarView(width: CGFloat, height: CGFloat) -> NSView {
-        let visualEffect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        visualEffect.material = .sidebar
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
-
-        var y = height - 50
-        let sectionTitle = NSTextField(labelWithString: "BOTTLES")
-        sectionTitle.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        sectionTitle.textColor = .secondaryLabelColor
-        sectionTitle.frame = NSRect(x: 18, y: y, width: 140, height: 16)
-        visualEffect.addSubview(sectionTitle)
-
-        let addBtn = NSButton(image: symbolImage("plus", size: 12), target: self, action: #selector(newBottleAction))
-        addBtn.isBordered = false
-        addBtn.frame = NSRect(x: width - 36, y: y - 2, width: 20, height: 20)
-        visualEffect.addSubview(addBtn)
-        y -= 35
-
-        // Bottle Item 1: Default
-        let bottleBox = NSBox(frame: NSRect(x: 10, y: y, width: width - 20, height: 48))
-        bottleBox.boxType = .custom
-        bottleBox.cornerRadius = 8
-        bottleBox.borderWidth = 0
-        bottleBox.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
-        visualEffect.addSubview(bottleBox)
-
-        let bottleIcon = NSImageView(frame: NSRect(x: 10, y: 14, width: 20, height: 20))
-        bottleIcon.image = symbolImage("cylinder.split.1x2.fill", size: 16, color: .controlAccentColor)
-        bottleBox.addSubview(bottleIcon)
-
-        let bTitle = NSTextField(labelWithString: "Default")
-        bTitle.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        bTitle.frame = NSRect(x: 36, y: 24, width: 120, height: 18)
-        bottleBox.addSubview(bTitle)
-
-        let bSub = NSTextField(labelWithString: "Windows 10 64-bit")
-        bSub.font = NSFont.systemFont(ofSize: 10)
-        bSub.textColor = .secondaryLabelColor
-        bSub.frame = NSRect(x: 36, y: 8, width: 120, height: 14)
-        bottleBox.addSubview(bSub)
-        y -= 54
-
-        // Bottle Item 2: Steam Isolated
-        let b2 = createSecondaryBottleRow(name: "Gaming 64-bit", y: y, width: width)
-        visualEffect.addSubview(b2)
-
-        // Bottom Install Software Button
-        let installBtn = NSButton(title: "  Install Software...", target: self, action: #selector(chooseAndRunExe))
-        installBtn.image = symbolImage("arrow.down.circle.fill", size: 13)
-        installBtn.imagePosition = .imageLeft
-        installBtn.bezelStyle = .rounded
-        installBtn.frame = NSRect(x: 12, y: 15, width: width - 24, height: 32)
-        visualEffect.addSubview(installBtn)
-
-        return visualEffect
+    // MARK: - Toolbar Delegate
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        return [
+            NSToolbarItem.Identifier("runExe"),
+            NSToolbarItem.Identifier("browseC"),
+            .flexibleSpace,
+            NSToolbarItem.Identifier("stopAll")
+        ]
     }
 
-    func createSecondaryBottleRow(name: String, y: CGFloat, width: CGFloat) -> NSView {
-        let row = NSView(frame: NSRect(x: 10, y: y, width: width - 20, height: 42))
-        let icon = NSImageView(frame: NSRect(x: 10, y: 11, width: 20, height: 20))
-        icon.image = symbolImage("shippingbox.fill", size: 15, color: .secondaryLabelColor)
-        row.addSubview(icon)
-
-        let t = NSTextField(labelWithString: name)
-        t.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        t.textColor = .secondaryLabelColor
-        t.frame = NSRect(x: 36, y: 20, width: 130, height: 16)
-        row.addSubview(t)
-
-        let s = NSTextField(labelWithString: "Ready")
-        s.font = NSFont.systemFont(ofSize: 10)
-        s.textColor = .tertiaryLabelColor
-        s.frame = NSRect(x: 36, y: 6, width: 130, height: 14)
-        row.addSubview(s)
-        return row
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        return toolbarDefaultItemIdentifiers(toolbar)
     }
 
-    // ==========================================
-    // 2. CENTER PANEL: PROGRAMS GRID
-    // ==========================================
-    func buildCenterView(width: CGFloat, height: CGFloat) -> NSView {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        view.autoresizingMask = [.width, .height]
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
 
-        var y = height - 70
-        // Top Hero Bottle Header
-        let heroBox = NSBox(frame: NSRect(x: 25, y: y - 25, width: width - 50, height: 75))
-        heroBox.boxType = .custom
-        heroBox.cornerRadius = 12
-        heroBox.borderWidth = 1
-        heroBox.borderColor = .separatorColor
-        heroBox.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
-        heroBox.autoresizingMask = [.width]
-        view.addSubview(heroBox)
+        switch itemIdentifier.rawValue {
+        case "runExe":
+            item.label = "Run File"
+            item.paletteLabel = "Run Executable"
+            item.toolTip = "Run any Windows executable (.exe)"
+            item.image = NSImage(systemSymbolName: "play.circle.fill", accessibilityDescription: "Run")
+            item.target = self
+            item.action = #selector(chooseAndRunExe)
+        case "browseC":
+            item.label = "C: Drive"
+            item.paletteLabel = "Browse C: Drive"
+            item.toolTip = "Open virtual Windows disk in Finder"
+            item.image = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "Drive")
+            item.target = self
+            item.action = #selector(openDriveC)
+        case "stopAll":
+            item.label = "Stop All"
+            item.paletteLabel = "Stop Processes"
+            item.toolTip = "Terminate all active Wine and game processes"
+            item.image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Stop")
+            item.target = self
+            item.action = #selector(killProcesses)
+        default:
+            return nil
+        }
+        return item
+    }
 
-        let heroIcon = NSImageView(frame: NSRect(x: 18, y: 18, width: 40, height: 40))
-        heroIcon.image = symbolImage("macmini.fill", size: 28, color: .controlAccentColor)
-        heroBox.addSubview(heroIcon)
+    // MARK: - Sidebar Construction
+    func createSidebar(width: CGFloat, height: CGFloat) -> NSView {
+        let view = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
 
-        let heroTitle = NSTextField(labelWithString: "Default (Windows 10 64-bit)")
-        heroTitle.font = NSFont.systemFont(ofSize: 18, weight: .bold)
-        heroTitle.frame = NSRect(x: 70, y: 40, width: 360, height: 24)
-        heroBox.addSubview(heroTitle)
+        var currentY = height - 44
 
-        let heroSub = NSTextField(labelWithString: "Wine 11.0 (Darwin WOW64) • Apple Silicon M4 Max • Metal 3")
-        heroSub.font = NSFont.systemFont(ofSize: 11)
-        heroSub.textColor = .secondaryLabelColor
-        heroSub.frame = NSRect(x: 70, y: 22, width: 380, height: 16)
-        heroBox.addSubview(heroSub)
-        y -= 105
+        let header = NSTextField(labelWithString: "BOTTLES")
+        header.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        header.textColor = .secondaryLabelColor
+        header.frame = NSRect(x: 18, y: currentY, width: 140, height: 16)
+        view.addSubview(header)
+        currentY -= 36
 
-        // Section Label
-        let secLabel = NSTextField(labelWithString: "PROGRAMS & SHORTCUTS")
-        secLabel.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        secLabel.textColor = .secondaryLabelColor
-        secLabel.frame = NSRect(x: 25, y: y, width: 300, height: 16)
-        view.addSubview(secLabel)
-        y -= 135
+        // Primary Active Bottle Row
+        let activeRow = NSBox(frame: NSRect(x: 8, y: currentY, width: width - 16, height: 48))
+        activeRow.boxType = .custom
+        activeRow.cornerRadius = 6
+        activeRow.borderWidth = 0
+        activeRow.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
+        view.addSubview(activeRow)
 
-        let cardW: CGFloat = 220
-        let cardH: CGFloat = 115
+        let bottleIcon = NSImageView(frame: NSRect(x: 12, y: 15, width: 18, height: 18))
+        bottleIcon.image = NSImage(systemSymbolName: "shippingbox.fill", accessibilityDescription: nil)
+        bottleIcon.contentTintColor = .controlAccentColor
+        activeRow.addSubview(bottleIcon)
 
-        // Card 1: Valve Steam
-        let steamCard = buildProgramCard(
-            title: "Valve Steam",
-            subtitle: "Windows Catalog • Metal Pipeline",
-            symbol: "gamecontroller.fill",
-            tintColor: .systemBlue,
-            action: #selector(launchSteam),
-            x: 25,
-            y: y,
-            width: cardW,
-            height: cardH
-        )
-        view.addSubview(steamCard)
+        let bName = NSTextField(labelWithString: "Default")
+        bName.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        bName.frame = NSRect(x: 38, y: 24, width: 130, height: 18)
+        activeRow.addSubview(bName)
 
-        // Card 2: Epic Games Store
-        let epicCard = buildProgramCard(
-            title: "Epic Games Store",
-            subtitle: "Storefront & Library",
-            symbol: "bolt.shield.fill",
-            tintColor: .systemPurple,
-            action: #selector(launchEpic),
-            x: 260,
-            y: y,
-            width: cardW,
-            height: cardH
-        )
-        view.addSubview(epicCard)
-        y -= 130
+        let bMeta = NSTextField(labelWithString: "Windows 10 (64-bit)")
+        bMeta.font = NSFont.systemFont(ofSize: 10)
+        bMeta.textColor = .secondaryLabelColor
+        bMeta.frame = NSRect(x: 38, y: 8, width: 130, height: 14)
+        activeRow.addSubview(bMeta)
+        currentY -= 54
 
-        // Card 3: Custom EXE
-        let exeCard = buildProgramCard(
-            title: "Run .EXE File...",
-            subtitle: "Choose any game or installer",
-            symbol: "play.rectangle.fill",
-            tintColor: .systemGreen,
-            action: #selector(chooseAndRunExe),
-            x: 25,
-            y: y,
-            width: cardW,
-            height: cardH
-        )
-        view.addSubview(exeCard)
+        // Secondary Bottle Row
+        let row2 = NSView(frame: NSRect(x: 8, y: currentY, width: width - 16, height: 42))
+        let icon2 = NSImageView(frame: NSRect(x: 12, y: 12, width: 18, height: 18))
+        icon2.image = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil)
+        icon2.contentTintColor = .secondaryLabelColor
+        row2.addSubview(icon2)
 
-        // Card 4: C: Drive
-        let cDriveCard = buildProgramCard(
-            title: "Browse C: Drive",
-            subtitle: "Open virtual filesystem in Finder",
-            symbol: "externaldrive.fill",
-            tintColor: .systemOrange,
-            action: #selector(openDriveC),
-            x: 260,
-            y: y,
-            width: cardW,
-            height: cardH
-        )
-        view.addSubview(cDriveCard)
+        let t2 = NSTextField(labelWithString: "Gaming Environment")
+        t2.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        t2.textColor = .secondaryLabelColor
+        t2.frame = NSRect(x: 38, y: 20, width: 140, height: 16)
+        row2.addSubview(t2)
 
-        // Bottom Status Label
-        statusLabel = NSTextField(labelWithString: "Ready • Apple Metal and MSync active.")
-        statusLabel.font = NSFont.systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.frame = NSRect(x: 25, y: 15, width: width - 50, height: 18)
-        statusLabel.autoresizingMask = [.width, .maxYMargin]
-        view.addSubview(statusLabel)
+        let m2 = NSTextField(labelWithString: "Isolated Prefix")
+        m2.font = NSFont.systemFont(ofSize: 10)
+        m2.textColor = .tertiaryLabelColor
+        m2.frame = NSRect(x: 38, y: 5, width: 140, height: 14)
+        row2.addSubview(m2)
+        view.addSubview(row2)
+
+        // Bottom Add Bottle Button
+        let addBtn = NSButton(title: "New Bottle...", target: self, action: #selector(newBottleAction))
+        addBtn.bezelStyle = .rounded
+        addBtn.frame = NSRect(x: 12, y: 14, width: width - 24, height: 30)
+        view.addSubview(addBtn)
 
         return view
     }
 
-    func buildProgramCard(
-        title: String,
-        subtitle: String,
-        symbol: String,
-        tintColor: NSColor,
-        action: Selector,
-        x: CGFloat,
-        y: CGFloat,
-        width: CGFloat,
-        height: CGFloat
-    ) -> NSBox {
-        let box = NSBox(frame: NSRect(x: x, y: y, width: width, height: height))
-        box.boxType = .custom
-        box.cornerRadius = 12
-        box.borderWidth = 1
-        box.borderColor = .separatorColor
-        box.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
+    // MARK: - Main Content View
+    func createMainDetail(width: CGFloat, height: CGFloat) -> NSView {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        scrollView.hasVerticalScroller = true
+        scrollView.autoresizingMask = [.width, .height]
+        scrollView.borderType = .noBorder
 
-        // Icon Badge
-        let badge = NSBox(frame: NSRect(x: 16, y: height - 52, width: 36, height: 36))
-        badge.boxType = .custom
-        badge.cornerRadius = 8
-        badge.borderWidth = 0
-        badge.fillColor = tintColor.withAlphaComponent(0.15)
-        box.addSubview(badge)
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 680))
+        content.autoresizingMask = [.width]
+        scrollView.documentView = content
 
-        let icon = NSImageView(frame: NSRect(x: 8, y: 8, width: 20, height: 20))
-        icon.image = symbolImage(symbol, size: 16, color: tintColor)
-        badge.addSubview(icon)
+        var currentY: CGFloat = 630
 
-        let t = NSTextField(labelWithString: title)
-        t.font = NSFont.systemFont(ofSize: 13, weight: .bold)
-        t.frame = NSRect(x: 16, y: 36, width: width - 32, height: 18)
-        box.addSubview(t)
+        // 1. Bottle Info Header Banner
+        let headerBox = NSBox(frame: NSRect(x: 24, y: currentY - 30, width: width - 48, height: 68))
+        headerBox.boxType = .custom
+        headerBox.cornerRadius = 8
+        headerBox.borderWidth = 1
+        headerBox.borderColor = .separatorColor
+        headerBox.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
+        headerBox.autoresizingMask = [.width]
+        content.addSubview(headerBox)
 
-        let s = NSTextField(labelWithString: subtitle)
-        s.font = NSFont.systemFont(ofSize: 10)
-        s.textColor = .secondaryLabelColor
-        s.frame = NSRect(x: 16, y: 18, width: width - 32, height: 16)
-        box.addSubview(s)
+        let hTitle = NSTextField(labelWithString: "Default Bottle")
+        hTitle.font = NSFont.systemFont(ofSize: 16, weight: .bold)
+        hTitle.frame = NSRect(x: 16, y: 38, width: 350, height: 20)
+        headerBox.addSubview(hTitle)
 
-        let btn = NSButton(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        btn.title = ""
-        btn.isTransparent = true
-        btn.target = self
-        btn.action = action
-        box.addSubview(btn)
+        let hDesc = NSTextField(labelWithString: "Wine 11.0 (Darwin New WOW64) • Apple Silicon M4 Max • Apple Metal 3")
+        hDesc.font = NSFont.systemFont(ofSize: 11)
+        hDesc.textColor = .secondaryLabelColor
+        hDesc.frame = NSRect(x: 16, y: 16, width: 450, height: 16)
+        headerBox.addSubview(hDesc)
+        currentY -= 95
 
-        return box
-    }
+        // 2. Installed Applications Section
+        let appSection = NSTextField(labelWithString: "APPLICATIONS")
+        appSection.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        appSection.textColor = .secondaryLabelColor
+        appSection.frame = NSRect(x: 24, y: currentY, width: 300, height: 16)
+        content.addSubview(appSection)
+        currentY -= 82
 
-    // ==========================================
-    // 3. RIGHT INSPECTOR: SETTINGS & TOOLS
-    // ==========================================
-    func buildInspectorView(width: CGFloat, height: CGFloat) -> NSView {
-        let visualEffect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        visualEffect.material = .sidebar
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
+        // App Card 1: Valve Steam
+        let steamCard = createAppCard(
+            title: "Valve Steam",
+            publisher: "Valve Corporation",
+            description: "Windows Steam client with full catalog unlock and Metal acceleration.",
+            buttonText: "Launch Steam",
+            symbolName: "gamecontroller.fill",
+            tintColor: .systemBlue,
+            action: #selector(launchSteam),
+            y: currentY,
+            width: width - 48,
+            parent: content
+        )
+        currentY -= 82
 
-        var y = height - 50
-        let sec1 = NSTextField(labelWithString: "GRAPHICS & ACCELERATION")
-        sec1.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        sec1.textColor = .secondaryLabelColor
-        sec1.frame = NSRect(x: 16, y: y, width: 220, height: 16)
-        visualEffect.addSubview(sec1)
-        y -= 28
+        // App Card 2: Epic Games Store
+        let epicCard = createAppCard(
+            title: "Epic Games Launcher",
+            publisher: "Epic Games, Inc.",
+            description: "Windows Epic Games Store and library runner.",
+            buttonText: "Launch Epic",
+            symbolName: "bolt.shield.fill",
+            tintColor: .systemPurple,
+            action: #selector(launchEpic),
+            y: currentY,
+            width: width - 48,
+            parent: content
+        )
+        currentY -= 82
 
-        d3dMetalCheck = NSButton(checkboxWithTitle: "D3DMetal (DirectX to Metal)", target: nil, action: nil)
-        d3dMetalCheck.state = .on
-        d3dMetalCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
-        visualEffect.addSubview(d3dMetalCheck)
-        y -= 24
+        // App Card 3: Custom Executable
+        let customCard = createAppCard(
+            title: "Run Custom Executable",
+            publisher: "Standalone Windows File",
+            description: "Launch any .exe installer, game binary, or portable utility.",
+            buttonText: "Select File...",
+            symbolName: "play.rectangle.fill",
+            tintColor: .systemGreen,
+            action: #selector(chooseAndRunExe),
+            y: currentY,
+            width: width - 48,
+            parent: content
+        )
+        currentY -= 95
 
-        msyncCheck = NSButton(checkboxWithTitle: "MSync (Mach Semaphores)", target: nil, action: nil)
-        msyncCheck.state = .on
-        msyncCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
-        visualEffect.addSubview(msyncCheck)
-        y -= 24
+        // 3. Settings & Maintenance Section
+        let settingsSection = NSTextField(labelWithString: "SETTINGS & BOTTLE CONTROL")
+        settingsSection.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        settingsSection.textColor = .secondaryLabelColor
+        settingsSection.frame = NSRect(x: 24, y: currentY, width: 300, height: 16)
+        content.addSubview(settingsSection)
+        currentY -= 90
 
-        hudCheck = NSButton(checkboxWithTitle: "Metal Performance HUD", target: nil, action: nil)
-        hudCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
-        visualEffect.addSubview(hudCheck)
-        y -= 38
+        let optBox = NSBox(frame: NSRect(x: 24, y: currentY, width: width - 48, height: 80))
+        optBox.boxType = .custom
+        optBox.cornerRadius = 8
+        optBox.borderWidth = 1
+        optBox.borderColor = .separatorColor
+        optBox.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
+        optBox.autoresizingMask = [.width]
+        content.addSubview(optBox)
 
-        let sec2 = NSTextField(labelWithString: "DISPLAY & RESOLUTION")
-        sec2.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        sec2.textColor = .secondaryLabelColor
-        sec2.frame = NSRect(x: 16, y: y, width: 220, height: 16)
-        visualEffect.addSubview(sec2)
-        y -= 26
+        // Options Row 1
+        d3dMetalCheckbox = NSButton(checkboxWithTitle: "D3DMetal (DirectX 11/12)", target: nil, action: nil)
+        d3dMetalCheckbox.state = .on
+        d3dMetalCheckbox.frame = NSRect(x: 16, y: 46, width: 200, height: 20)
+        optBox.addSubview(d3dMetalCheckbox)
 
-        let scaleLbl = NSTextField(labelWithString: "Screen Scaling:")
-        scaleLbl.font = NSFont.systemFont(ofSize: 11)
-        scaleLbl.frame = NSRect(x: 16, y: y, width: 120, height: 16)
-        visualEffect.addSubview(scaleLbl)
-        y -= 24
+        msyncCheckbox = NSButton(checkboxWithTitle: "MSync Fast Synchronization", target: nil, action: nil)
+        msyncCheckbox.state = .on
+        msyncCheckbox.frame = NSRect(x: 230, y: 46, width: 200, height: 20)
+        optBox.addSubview(msyncCheckbox)
 
-        scalePopUp = NSPopUpButton(frame: NSRect(x: 14, y: y, width: 232, height: 24))
-        scalePopUp.addItems(withTitles: ["Auto (Adaptive to Monitor)", "1.50x (Scaled)", "1.75x (QHD 1440p)", "2.00x (Retina 4K)", "2.25x (Large)"])
-        visualEffect.addSubview(scalePopUp)
-        y -= 34
+        hudCheckbox = NSButton(checkboxWithTitle: "Metal Performance HUD", target: nil, action: nil)
+        hudCheckbox.frame = NSRect(x: 440, y: 46, width: 170, height: 20)
+        optBox.addSubview(hudCheckbox)
 
-        let backLbl = NSTextField(labelWithString: "Graphics Engine:")
-        backLbl.font = NSFont.systemFont(ofSize: 11)
-        backLbl.frame = NSRect(x: 16, y: y, width: 120, height: 16)
-        visualEffect.addSubview(backLbl)
-        y -= 24
+        // Options Row 2 (Scale & Backend)
+        let sLbl = NSTextField(labelWithString: "Scaling:")
+        sLbl.font = NSFont.systemFont(ofSize: 11)
+        sLbl.frame = NSRect(x: 16, y: 15, width: 55, height: 18)
+        optBox.addSubview(sLbl)
 
-        backendPopUp = NSPopUpButton(frame: NSRect(x: 14, y: y, width: 232, height: 24))
-        backendPopUp.addItems(withTitles: ["Apple D3DMetal (GPTK)", "DXMT (DirectX 11 to Metal)", "DXVK (Vulkan over MoltenVK)", "WineD3D (OpenGL Fallback)"])
-        visualEffect.addSubview(backendPopUp)
-        y -= 44
+        scalePicker = NSPopUpButton(frame: NSRect(x: 70, y: 12, width: 160, height: 24))
+        scalePicker.addItems(withTitles: ["Auto (Adaptive to Screen)", "1.50x (Scaled)", "1.75x (QHD 1440p)", "2.00x (Retina 4K)", "2.25x (Large)"])
+        optBox.addSubview(scalePicker)
 
-        // Section: Tools
-        let sec3 = NSTextField(labelWithString: "BOTTLE CONTROL")
-        sec3.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        sec3.textColor = .secondaryLabelColor
-        sec3.frame = NSRect(x: 16, y: y, width: 220, height: 16)
-        visualEffect.addSubview(sec3)
-        y -= 30
+        let eLbl = NSTextField(labelWithString: "Engine:")
+        eLbl.font = NSFont.systemFont(ofSize: 11)
+        eLbl.frame = NSRect(x: 250, y: 15, width: 55, height: 18)
+        optBox.addSubview(eLbl)
 
-        let tools: [(String, String, Selector)] = [
-            ("Wine Configuration", "gearshape.fill", #selector(openWinecfg)),
-            ("Registry Editor", "pencil.and.list.clipboard", #selector(openRegedit)),
-            ("Task Manager", "chart.bar.xaxis", #selector(openTaskmgr)),
-            ("Command Prompt", "terminal.fill", #selector(openCmd))
+        enginePicker = NSPopUpButton(frame: NSRect(x: 305, y: 12, width: 180, height: 24))
+        enginePicker.addItems(withTitles: ["Apple D3DMetal (GPTK)", "DXMT (DirectX 11)", "DXVK (Vulkan/MoltenVK)", "WineD3D (Fallback)"])
+        optBox.addSubview(enginePicker)
+        currentY -= 50
+
+        // 4. Wine Utility Buttons Row
+        let tools = [
+            ("Winecfg", #selector(openWinecfg)),
+            ("Regedit", #selector(openRegedit)),
+            ("Task Manager", #selector(openTaskmgr)),
+            ("Command Prompt", #selector(openCmd))
         ]
 
-        for (title, symbol, sel) in tools {
-            let b = NSButton(title: "  " + title, target: self, action: sel)
-            b.image = symbolImage(symbol, size: 12, color: .controlAccentColor)
-            b.imagePosition = .imageLeft
+        var btnX: CGFloat = 24
+        for (label, sel) in tools {
+            let b = NSButton(title: label, target: self, action: sel)
             b.bezelStyle = .rounded
-            b.alignment = .left
-            b.frame = NSRect(x: 14, y: y, width: 232, height: 28)
-            visualEffect.addSubview(b)
-            y -= 32
+            b.frame = NSRect(x: btnX, y: currentY, width: 130, height: 28)
+            content.addSubview(b)
+            btnX += 140
         }
+        currentY -= 35
 
-        y -= 6
-        let killBtn = NSButton(title: "  Stop All Bottle Processes", target: self, action: #selector(killBottleProcesses))
-        killBtn.image = symbolImage("xmark.octagon.fill", size: 12, color: .systemRed)
-        killBtn.imagePosition = .imageLeft
-        killBtn.bezelStyle = .rounded
-        killBtn.contentTintColor = .systemRed
-        killBtn.frame = NSRect(x: 14, y: y, width: 232, height: 30)
-        visualEffect.addSubview(killBtn)
+        // Status Label at bottom
+        statusText = NSTextField(labelWithString: "Ready. Select an application to launch.")
+        statusText.font = NSFont.systemFont(ofSize: 11)
+        statusText.textColor = .secondaryLabelColor
+        statusText.frame = NSRect(x: 24, y: currentY, width: width - 48, height: 18)
+        statusText.autoresizingMask = [.width]
+        content.addSubview(statusText)
 
-        return visualEffect
+        return scrollView
     }
 
-    // ==========================================
-    // HELPERS & EXECUTION
-    // ==========================================
-    func symbolImage(_ name: String, size: CGFloat, color: NSColor? = nil) -> NSImage {
-        let config = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
-        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            img.isTemplate = (color == nil)
-            return img
-        }
-        return NSImage()
+    // MARK: - App Card Component
+    func createAppCard(
+        title: String,
+        publisher: String,
+        description: String,
+        buttonText: String,
+        symbolName: String,
+        tintColor: NSColor,
+        action: Selector,
+        y: CGFloat,
+        width: CGFloat,
+        parent: NSView
+    ) -> NSBox {
+        let card = NSBox(frame: NSRect(x: 24, y: y, width: width, height: 72))
+        card.boxType = .custom
+        card.cornerRadius = 8
+        card.borderWidth = 1
+        card.borderColor = .separatorColor
+        card.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.4)
+        card.autoresizingMask = [.width]
+        parent.addSubview(card)
+
+        // Leading App Icon
+        let iconView = NSImageView(frame: NSRect(x: 16, y: 16, width: 38, height: 38))
+        iconView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        iconView.contentTintColor = tintColor
+        card.addSubview(iconView)
+
+        // Labels
+        let t = NSTextField(labelWithString: title)
+        t.font = NSFont.systemFont(ofSize: 13, weight: .bold)
+        t.frame = NSRect(x: 64, y: 44, width: width - 230, height: 18)
+        card.addSubview(t)
+
+        let p = NSTextField(labelWithString: publisher)
+        p.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        p.textColor = .secondaryLabelColor
+        p.frame = NSRect(x: 64, y: 28, width: width - 230, height: 14)
+        card.addSubview(p)
+
+        let d = NSTextField(labelWithString: description)
+        d.font = NSFont.systemFont(ofSize: 11)
+        d.textColor = .secondaryLabelColor
+        d.frame = NSRect(x: 64, y: 10, width: width - 230, height: 16)
+        card.addSubview(d)
+
+        // Action Button
+        let btn = NSButton(title: buttonText, target: self, action: action)
+        btn.bezelStyle = .rounded
+        btn.frame = NSRect(x: width - 146, y: 20, width: 130, height: 32)
+        btn.autoresizingMask = [.minXMargin]
+        card.addSubview(btn)
+
+        return card
     }
 
+    // MARK: - Actions
     func getScaleParam() -> String {
-        switch scalePopUp.titleOfSelectedItem ?? "" {
+        switch scalePicker.titleOfSelectedItem ?? "" {
         case "1.50x (Scaled)": return "1.5"
         case "1.75x (QHD 1440p)": return "1.75"
         case "2.00x (Retina 4K)": return "2.0"
@@ -425,8 +415,8 @@ class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
         }
     }
 
-    func getBackendParam() -> String {
-        let sel = backendPopUp.titleOfSelectedItem ?? ""
+    func getEngineParam() -> String {
+        let sel = enginePicker.titleOfSelectedItem ?? ""
         if sel.contains("DXMT") { return "dxmt" }
         if sel.contains("DXVK") { return "dxvk" }
         if sel.contains("WineD3D") { return "wined3d" }
@@ -434,31 +424,31 @@ class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
     }
 
     @objc func launchSteam() {
-        statusLabel.stringValue = "Launching Windows Steam with Metal acceleration..."
-        var args = ["steam", "--scale", getScaleParam(), "--backend", getBackendParam()]
-        if hudCheck.state == .on { args.append("--hud") }
+        statusText.stringValue = "Launching Steam for Windows..."
+        var args = ["steam", "--scale", getScaleParam(), "--backend", getEngineParam()]
+        if hudCheckbox.state == .on { args.append("--hud") }
         runCLI(args: args)
     }
 
     @objc func launchEpic() {
-        statusLabel.stringValue = "Launching Epic Games Store..."
-        var args = ["epic", "--backend", getBackendParam()]
-        if hudCheck.state == .on { args.append("--hud") }
+        statusText.stringValue = "Launching Epic Games Launcher..."
+        var args = ["epic", "--backend", getEngineParam()]
+        if hudCheckbox.state == .on { args.append("--hud") }
         runCLI(args: args)
     }
 
     @objc func chooseAndRunExe() {
         let panel = NSOpenPanel()
-        panel.title = "Select Windows Executable (.EXE)"
+        panel.title = "Select Windows Executable (.exe)"
         panel.allowedContentTypes = []
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
 
         if panel.runModal() == .OK, let url = panel.url {
-            statusLabel.stringValue = "Running: \(url.lastPathComponent)..."
-            var args = ["run", url.path, "--backend", getBackendParam()]
-            if hudCheck.state == .on { args.append("--hud") }
+            statusText.stringValue = "Running: \(url.lastPathComponent)..."
+            var args = ["run", url.path, "--backend", getEngineParam()]
+            if hudCheckbox.state == .on { args.append("--hud") }
             runCLI(args: args)
         }
     }
@@ -466,38 +456,38 @@ class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
     @objc func openDriveC() {
         let url = URL(fileURLWithPath: prefixPath + "/drive_c")
         NSWorkspace.shared.activateFileViewerSelecting([url])
-        statusLabel.stringValue = "Opened virtual C: Drive in Finder."
+        statusText.stringValue = "Opened C: Drive in Finder."
     }
 
     @objc func openWinecfg() {
-        statusLabel.stringValue = "Opening Wine Configuration..."
+        statusText.stringValue = "Opening Wine Configuration..."
         runCLI(args: ["winecfg"])
     }
 
     @objc func openRegedit() {
-        statusLabel.stringValue = "Opening Registry Editor..."
+        statusText.stringValue = "Opening Registry Editor..."
         runCLI(args: ["regedit"])
     }
 
     @objc func openTaskmgr() {
-        statusLabel.stringValue = "Opening Task Manager..."
+        statusText.stringValue = "Opening Task Manager..."
         runCLI(args: ["taskmgr"])
     }
 
     @objc func openCmd() {
-        statusLabel.stringValue = "Opening Command Prompt..."
+        statusText.stringValue = "Opening Command Prompt..."
         runCLI(args: ["cmd"])
     }
 
-    @objc func killBottleProcesses() {
-        statusLabel.stringValue = "Stopping all Wine processes..."
+    @objc func killProcesses() {
+        statusText.stringValue = "Stopping all active bottle processes..."
         runCLI(args: ["kill"])
     }
 
     @objc func newBottleAction() {
         let alert = NSAlert()
-        alert.messageText = "New ma-proton Bottle"
-        alert.informativeText = "Active bottle 'Default' is configured with Windows 10 64-bit and Apple Metal 3 acceleration."
+        alert.messageText = "New Bottle"
+        alert.informativeText = "Active bottle 'Default' is operational with Windows 10 (64-bit) and Apple Metal."
         alert.runModal()
     }
 
@@ -505,17 +495,17 @@ class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: self.maProtonBin)
+            process.executableURL = URL(fileURLWithPath: self.runnerBinary)
             process.arguments = args
 
             do {
                 try process.run()
                 DispatchQueue.main.async {
-                    self.statusLabel.stringValue = "Running: ma-proton \(args.joined(separator: " "))"
+                    self.statusText.stringValue = "Active: ma-proton \(args.joined(separator: " "))"
                 }
             } catch {
                 DispatchQueue.main.async {
-                    self.statusLabel.stringValue = "Error: \(error.localizedDescription)"
+                    self.statusText.stringValue = "Error: \(error.localizedDescription)"
                 }
             }
         }
@@ -523,7 +513,7 @@ class CrossOverLauncherApp: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-let delegate = CrossOverLauncherApp()
+let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
