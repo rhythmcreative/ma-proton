@@ -18,8 +18,12 @@ Permite ejecutar videojuegos y aplicaciones de Windows (x86_64 y x86) en macOS (
 * **Compatibilidad Total con Apple Silicon:**
   * Gestión automática de Rosetta 2 y ajuste de granularidad de páginas de memoria de 4 KB (Windows) a 16 KB (Darwin).
   * Arquitectura *New WOW64* para ejecutar títulos de 32 bits sin requerir librerías Unix de 32 bits.
-* **Integración con Steam:**
-  * Compatible con el contrato de ejecución de Steam (`waitforexitandrun`, `STEAM_COMPAT_DATA_PATH`, `SteamAppId`).
+* **Integración con Steam y Epic Games Store:**
+  * Soporte nativo para lanzar e instalar **Steam** y **Epic Games Store** de Windows en Mac sin bloqueos de catálogo.
+* **Aplicación Gráfica Nativa de macOS:**
+  * Incluye **`ma-proton Launcher.app`** instalado en `/Applications` para lanzar juegos, Steam y Epic Games con un solo clic.
+* **Auto-Adaptación de Escala a Pantalla:**
+  * Detección en tiempo real de la resolución del monitor (QHD, 4K, Retina) para adaptar automáticamente las ventanas y texto sin verse diminutos.
 * **Metal Performance HUD Integrado:**
   * Monitorización de FPS, frametimes, uso de memoria GPU y resolución en pantalla con solo añadir `--hud`.
 
@@ -50,7 +54,22 @@ Muestra la GPU Metal activa, el estado de Rosetta 2 y los motores Wine Darwin de
 ma-proton status
 ```
 
-### 2. Ejecutar un Juego
+### 2. Lanzar Steam o Epic Games Store (Windows)
+```bash
+# Abrir Steam para Windows (con escala adaptada automáticamente a tu pantalla)
+ma-proton steam
+
+# Abrir Steam con escala personalizada (ej. 1.75x, 2.0x grande)
+ma-proton steam --scale 2.0
+
+# Abrir o instalar Epic Games Store
+ma-proton epic
+
+# Abrir la aplicación gráfica nativa de Mac
+ma-proton app
+```
+
+### 3. Ejecutar un Juego o Archivo .EXE
 ```bash
 ma-proton run "/ruta/al/juego/Game.exe"
 ```

@@ -93,12 +93,12 @@ class SystemCompatibility:
             scale = 2.0
             dpi = 192
         elif w >= 2560:
-            # 1440p (QHD / 2K) optimal readability
-            scale = 1.35
-            dpi = 130
+            # 1440p (QHD / 2K) enhanced readability (1.75x)
+            scale = 1.75
+            dpi = 168
         elif w >= 1920:
-            scale = 1.15
-            dpi = 110
+            scale = 1.25
+            dpi = 120
         else:
             scale = 1.0
             dpi = 96

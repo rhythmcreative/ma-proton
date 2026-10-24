@@ -104,13 +104,15 @@ class SteamIntegration:
             return 1
 
         # Steam on Wine requires -no-cef-sandbox due to Windows security token handling
-        # and -forcedesktopscaling to render at full Retina crisp size
-        scale_val = env.get("MA_PROTON_SCALE", "2.0")
+        # and desktopscaling / CEF scale flags to render properly at high resolution
+        scale_val = env.get("MA_PROTON_SCALE", "1.75")
         steam_args = [
             "-no-cef-sandbox",
             "-cef-force-32bit",
             "-allwgmultigpu",
-            "-forcedesktopscaling", str(scale_val)
+            "-forcedesktopscaling", str(scale_val),
+            f"--force-device-scale-factor={scale_val}",
+            f"-cef-force-device-scale-factor={scale_val}"
         ]
         if extra_args:
             steam_args.extend(extra_args)

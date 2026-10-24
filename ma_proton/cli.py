@@ -16,6 +16,7 @@ from ma_proton.graphics import GraphicsManager
 from ma_proton.sync import SynchronizationManager
 from ma_proton.audio import AudioManager
 from ma_proton.steam import SteamIntegration
+from ma_proton.epic import EpicGamesIntegration
 from ma_proton.process import WineProcessRunner
 
 def build_full_env(cfg: dict, runtime_info, prefix_path: Path, backend: str, sync_mode: str, hud: bool) -> dict:
@@ -193,6 +194,28 @@ def handle_steam(args, unknown_args):
     ret = SteamIntegration.launch_steam(prefix_path, runtime_info, env, extra_args=unknown_args)
     sys.exit(ret)
 
+def handle_epic(args, unknown_args):
+    config_mgr = ConfigManager()
+    cfg = config_mgr.config
+    prefix_path = Path(args.prefix).resolve() if args.prefix else Path(cfg.get("default_prefix"))
+    backend = args.backend or cfg.get("graphics_backend", "gptk")
+    sync_mode = args.sync or cfg.get("sync_mode", "msync")
+    hud = args.hud or cfg.get("metal_hud", False)
+
+    runtime_info = RuntimeManager.get_best_runtime(cfg.get("runtime"))
+    env = build_full_env(cfg, runtime_info, prefix_path, backend, sync_mode, hud)
+
+    w, h, auto_scale, auto_dpi = SystemCompatibility.get_display_resolution_and_scale()
+    prefix_mgr = PrefixManager(prefix_path, runtime_info, env)
+    prefix_mgr.initialize()
+    prefix_mgr.apply_retina_tweak(dpi=auto_dpi)
+
+    gfx_mgr = GraphicsManager(backend=backend)
+    gfx_mgr.install_backend_dlls(prefix_mgr.system32_dir, runtime_info)
+
+    ret = EpicGamesIntegration.launch_epic(prefix_path, runtime_info, env, extra_args=unknown_args)
+    sys.exit(ret)
+
 def main():
     # Valve Proton contract compatibility:
     # Steam often executes: `proton run <game.exe>` or `proton waitforexitandrun <game.exe>`
@@ -257,6 +280,16 @@ def main():
     steam_parser.add_argument("--hud", action="store_true", help="Activar Metal Performance HUD")
     steam_parser.add_argument("--scale", default="auto", help="Factor de escala para la pantalla (auto, 1.25, 1.5, 2.0)")
 
+    # Command: epic
+    epic_parser = subparsers.add_parser("epic", help="Lanzar o instalar Epic Games Store para Windows")
+    epic_parser.add_argument("--prefix", "-p", help="Ruta personalizada del prefijo")
+    epic_parser.add_argument("--backend", "-b", choices=["gptk", "dxmt", "dxvk", "wined3d"], help="Motor de traducción gráfica")
+    epic_parser.add_argument("--sync", "-s", choices=["msync", "esync", "server"], help="Modo de sincronización (MSync)")
+    epic_parser.add_argument("--hud", action="store_true", help="Activar Metal Performance HUD")
+
+    # Command: app
+    subparsers.add_parser("app", help="Abrir la aplicación gráfica nativa ma-proton Launcher")
+
     parsed, unknown = parser.parse_known_args()
 
     if not parsed.subcommand:
@@ -267,6 +300,11 @@ def main():
         handle_run(parsed, unknown)
     elif parsed.subcommand == "steam":
         handle_steam(parsed, unknown)
+    elif parsed.subcommand == "epic":
+        handle_epic(parsed, unknown)
+    elif parsed.subcommand == "app":
+        import subprocess
+        subprocess.run(["open", "-a", "ma-proton Launcher"])
     elif parsed.subcommand == "status":
         handle_status(parsed)
     elif parsed.subcommand == "init":
