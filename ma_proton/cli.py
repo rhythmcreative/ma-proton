@@ -154,6 +154,26 @@ def handle_wine_utility(utility_name: str, args):
     cmd = [str(runtime_info.wine_bin), utility_name]
     subprocess.run(cmd, env=env)
 
+def handle_steam(args, unknown_args):
+    config_mgr = ConfigManager()
+    cfg = config_mgr.config
+    prefix_path = Path(args.prefix).resolve() if args.prefix else Path(cfg.get("default_prefix"))
+    backend = args.backend or cfg.get("graphics_backend", "gptk")
+    sync_mode = args.sync or cfg.get("sync_mode", "msync")
+    hud = args.hud or cfg.get("metal_hud", False)
+
+    runtime_info = RuntimeManager.get_best_runtime(cfg.get("runtime"))
+    env = build_full_env(cfg, runtime_info, prefix_path, backend, sync_mode, hud)
+
+    prefix_mgr = PrefixManager(prefix_path, runtime_info, env)
+    prefix_mgr.initialize()
+
+    gfx_mgr = GraphicsManager(backend=backend)
+    gfx_mgr.install_backend_dlls(prefix_mgr.system32_dir, runtime_info)
+
+    ret = SteamIntegration.launch_steam(prefix_path, runtime_info, env, extra_args=unknown_args)
+    sys.exit(ret)
+
 def main():
     # Valve Proton contract compatibility:
     # Steam often executes: `proton run <game.exe>` or `proton waitforexitandrun <game.exe>`
@@ -210,6 +230,13 @@ def main():
     shell_parser = subparsers.add_parser("shell", help="Abrir subshell con entorno ma-proton exportado")
     shell_parser.add_argument("--prefix", "-p", help="Ruta del prefijo")
 
+    # Command: steam
+    steam_parser = subparsers.add_parser("steam", help="Lanzar Steam para Windows (desbloquea e instala cualquier juego en Mac)")
+    steam_parser.add_argument("--prefix", "-p", help="Ruta personalizada del prefijo")
+    steam_parser.add_argument("--backend", "-b", choices=["gptk", "dxmt", "dxvk", "wined3d"], help="Motor de traducción gráfica")
+    steam_parser.add_argument("--sync", "-s", choices=["msync", "esync", "server"], help="Modo de sincronización (MSync)")
+    steam_parser.add_argument("--hud", action="store_true", help="Activar Metal Performance HUD")
+
     parsed, unknown = parser.parse_known_args()
 
     if not parsed.subcommand:
@@ -218,6 +245,8 @@ def main():
 
     if parsed.subcommand == "run":
         handle_run(parsed, unknown)
+    elif parsed.subcommand == "steam":
+        handle_steam(parsed, unknown)
     elif parsed.subcommand == "status":
         handle_status(parsed)
     elif parsed.subcommand == "init":
