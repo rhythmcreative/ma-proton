@@ -85,7 +85,7 @@ class RuntimeManager:
             if not wine.exists():
                 wine = cx_bin / "wine"
             wineserver = cx_bin / "wineserver"
-            wineboot = cx_bin / "wine" # cx uses wine --bottle
+            wineboot = cx_bin / "wineloader"
             
             # Lib paths
             gptk_dir = base_path / "lib64" / "apple_gptk"
@@ -99,7 +99,7 @@ class RuntimeManager:
                 root_path=base_path,
                 wine_bin=wine,
                 wineserver_bin=wineserver,
-                wineboot_bin=wine,
+                wineboot_bin=wineboot,
                 winecfg_bin=wine,
                 regedit_bin=wine,
                 lib_dir=lib_dir,

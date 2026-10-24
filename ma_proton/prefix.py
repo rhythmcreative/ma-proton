@@ -35,13 +35,10 @@ class PrefixManager:
         print(f"[*] Inicializando prefijo de compatibilidad en: {self.prefix_path}")
         self.prefix_path.mkdir(parents=True, exist_ok=True)
 
-        # Call wineboot
-        cmd = [str(self.runtime.wineboot_bin), "--init"] if hasattr(self.runtime, "wineboot_bin") else [str(self.runtime.wine_bin), "wineboot", "-u"]
+        # Call wineboot with wine_bin
+        cmd = [str(self.runtime.wine_bin), "wineboot", "-u"]
         try:
-            res = subprocess.run(cmd, env=self.env, timeout=120)
-            if res.returncode != 0:
-                # Try fallback wineboot command
-                subprocess.run([str(self.runtime.wine_bin), "wineboot", "-u"], env=self.env, timeout=120)
+            subprocess.run(cmd, env=self.env, timeout=120)
         except Exception as e:
             print(f"[!] Aviso durante wineboot: {e}")
 

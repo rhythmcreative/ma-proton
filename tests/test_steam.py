@@ -6,7 +6,7 @@ class TestSteam(unittest.TestCase):
     def test_steam_exe_path(self):
         pfx = Path("/tmp/test_prefix")
         exe_path = SteamIntegration.get_steam_exe_path(pfx)
-        expected = pfx / "drive_c" / "Program Files (x86)" / "Steam" / "Steam.exe"
+        expected = pfx / "drive_c" / "Program Files (x86)" / "Steam" / "steam.exe"
         self.assertEqual(exe_path, expected)
 
     def test_steam_not_installed_initially(self):

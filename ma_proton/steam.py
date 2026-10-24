@@ -55,14 +55,13 @@ class SteamIntegration:
 
     @classmethod
     def get_steam_exe_path(cls, prefix_path: Path) -> Path:
-        """Returns the path to Steam.exe inside the prefix."""
-        return (
-            prefix_path
-            / "drive_c"
-            / "Program Files (x86)"
-            / "Steam"
-            / "Steam.exe"
-        )
+        """Returns the path to Steam.exe inside the prefix (case-resilient)."""
+        steam_dir = prefix_path / "drive_c" / "Program Files (x86)" / "Steam"
+        for name in ["steam.exe", "Steam.exe"]:
+            candidate = steam_dir / name
+            if candidate.is_file():
+                return candidate
+        return steam_dir / "steam.exe"
 
     @classmethod
     def is_steam_installed(cls, prefix_path: Path) -> bool:
@@ -94,9 +93,15 @@ class SteamIntegration:
             subprocess.run([str(runtime_info.wine_bin), str(installer), "/S"], env=env)
             
             # Wait/verify if installed
+            steam_exe = cls.get_steam_exe_path(prefix_path)
             if not steam_exe.is_file():
                 # Try non-silent in case installer needs UI
                 subprocess.run([str(runtime_info.wine_bin), str(installer)], env=env)
+                steam_exe = cls.get_steam_exe_path(prefix_path)
+
+        if not steam_exe.is_file():
+            print("[-] Error: No se pudo localizar steam.exe tras la instalación.")
+            return 1
 
         # Steam on Wine requires -no-cef-sandbox due to Windows security token handling
         steam_args = [
