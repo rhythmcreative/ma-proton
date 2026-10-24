@@ -70,6 +70,41 @@ class SystemCompatibility:
             pass
         return "Apple Metal GPU"
 
+    @staticmethod
+    def get_display_resolution_and_scale() -> tuple:
+        """
+        Dynamically detects main display resolution and calculates the
+        optimal scale factor and DPI to adapt Windows apps/Steam to the screen.
+        Returns: (width, height, scale_factor, dpi)
+        """
+        w, h = 1920, 1080
+        try:
+            import ctypes
+            cg = ctypes.cdll.LoadLibrary("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+            main_display = cg.CGMainDisplayID()
+            cg.CGDisplayPixelsWide.restype = ctypes.c_size_t
+            cg.CGDisplayPixelsHigh.restype = ctypes.c_size_t
+            w = int(cg.CGDisplayPixelsWide(main_display))
+            h = int(cg.CGDisplayPixelsHigh(main_display))
+        except Exception:
+            pass
+
+        if w >= 3840:
+            scale = 2.0
+            dpi = 192
+        elif w >= 2560:
+            # 1440p (QHD / 2K) optimal readability
+            scale = 1.35
+            dpi = 130
+        elif w >= 1920:
+            scale = 1.15
+            dpi = 110
+        else:
+            scale = 1.0
+            dpi = 96
+
+        return w, h, scale, dpi
+
     @classmethod
     def get_full_diagnostics(cls) -> Dict[str, Any]:
         return {

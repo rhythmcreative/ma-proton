@@ -164,10 +164,28 @@ def handle_steam(args, unknown_args):
 
     runtime_info = RuntimeManager.get_best_runtime(cfg.get("runtime"))
     env = build_full_env(cfg, runtime_info, prefix_path, backend, sync_mode, hud)
-    env["MA_PROTON_SCALE"] = str(getattr(args, "scale", "2.0") or "2.0")
+
+    # Auto-detect display resolution and adapt scale automatically
+    scale_arg = getattr(args, "scale", "auto")
+    w, h, auto_scale, auto_dpi = SystemCompatibility.get_display_resolution_and_scale()
+    if scale_arg == "auto":
+        chosen_scale = auto_scale
+        chosen_dpi = auto_dpi
+        print(f"[*] Pantalla detectada: {w}x{h} -> Adaptando automáticamente a: {chosen_scale}x (DPI: {chosen_dpi})")
+    else:
+        try:
+            chosen_scale = float(scale_arg)
+            chosen_dpi = int(chosen_scale * 96)
+        except ValueError:
+            chosen_scale = auto_scale
+            chosen_dpi = auto_dpi
+        print(f"[*] Escala seleccionada: {chosen_scale}x (DPI: {chosen_dpi})")
+
+    env["MA_PROTON_SCALE"] = str(chosen_scale)
 
     prefix_mgr = PrefixManager(prefix_path, runtime_info, env)
     prefix_mgr.initialize()
+    prefix_mgr.apply_retina_tweak(dpi=chosen_dpi)
 
     gfx_mgr = GraphicsManager(backend=backend)
     gfx_mgr.install_backend_dlls(prefix_mgr.system32_dir, runtime_info)
@@ -237,7 +255,7 @@ def main():
     steam_parser.add_argument("--backend", "-b", choices=["gptk", "dxmt", "dxvk", "wined3d"], help="Motor de traducción gráfica")
     steam_parser.add_argument("--sync", "-s", choices=["msync", "esync", "server"], help="Modo de sincronización (MSync)")
     steam_parser.add_argument("--hud", action="store_true", help="Activar Metal Performance HUD")
-    steam_parser.add_argument("--scale", default="2.0", help="Factor de escala para pantallas Retina/4K (ej. 1.5, 2.0)")
+    steam_parser.add_argument("--scale", default="auto", help="Factor de escala para la pantalla (auto, 1.25, 1.5, 2.0)")
 
     parsed, unknown = parser.parse_known_args()
 
