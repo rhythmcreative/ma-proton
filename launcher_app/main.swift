@@ -1,791 +1,421 @@
 import AppKit
-import WebKit
+import Foundation
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
+// MARK: - Exact CrossOver UI Architecture
+final class CrossOverAppController: NSObject, NSApplicationDelegate {
     var window: NSWindow!
-    var webView: WKWebView!
     
+    // Bottle state
+    var selectedBottle: String = "Default"
+    
+    // Toggles (matching CrossOver BottleView.nib)
+    var d3dMetalCheck: NSButton!
+    var msyncCheck: NSButton!
+    var highResCheck: NSButton!
+    var hudCheck: NSButton!
+    var scalePopUp: NSPopUpButton!
+
     let runnerBinary = "/Users/rhythmcreative/.local/bin/ma-proton"
     let prefixPath = NSHomeDirectory() + "/.ma-proton/prefixes/default"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        setupWindow()
+        setupCrossOverWindow()
     }
 
-    func setupWindow() {
-        let width: CGFloat = 960
-        let height: CGFloat = 660
+    func setupCrossOverWindow() {
+        let width: CGFloat = 900
+        let height: CGFloat = 560
 
         let rect = NSRect(x: 0, y: 0, width: width, height: height)
         window = NSWindow(
             contentRect: rect,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.center()
         window.title = "ma-proton"
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.minSize = NSSize(width: 860, height: 580)
+        window.minSize = NSSize(width: 820, height: 480)
         window.isReleasedWhenClosed = false
 
-        // WebKit Configuration
-        let config = WKWebViewConfiguration()
-        let userContent = WKUserContentController()
-        userContent.add(self, name: "maProton")
-        config.userContentController = userContent
-        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        let rootSplit = NSSplitView(frame: rect)
+        rootSplit.isVertical = true
+        rootSplit.dividerStyle = .thin
+        rootSplit.autoresizingMask = [.width, .height]
+        window.contentView = rootSplit
 
-        webView = WKWebView(frame: rect, configuration: config)
-        webView.autoresizingMask = [.width, .height]
-        webView.navigationDelegate = self
-        webView.setValue(false, forKey: "drawsBackground") // Transparent native background
+        // 1. Left Sidebar: Bottles (Width: 200)
+        let sidebar = buildCrossOverSidebar(width: 200, height: height)
+        rootSplit.addSubview(sidebar)
 
-        window.contentView = webView
+        // 2. Center: IconCollectionView (Width: 440)
+        let centerView = buildCrossOverIconCollectionView(width: 440, height: height)
+        rootSplit.addSubview(centerView)
 
-        loadAppUI()
+        // 3. Right Sidebar: Bottle Details & Tools (Width: 260)
+        let inspector = buildCrossOverInspector(width: 260, height: height)
+        rootSplit.addSubview(inspector)
+
+        rootSplit.setPosition(200, ofDividerAt: 0)
+        rootSplit.setPosition(640, ofDividerAt: 1)
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - IPC Message Handler (JS to Swift)
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let data = message.body as? [String: Any],
-              let action = data["action"] as? String else { return }
+    // ==========================================
+    // 1. LEFT SIDEBAR: BOTTLES
+    // ==========================================
+    func buildCrossOverSidebar(width: CGFloat, height: CGFloat) -> NSView {
+        let view = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
 
-        let scale = data["scale"] as? String ?? "auto"
-        let backend = data["backend"] as? String ?? "gptk"
-        let hud = data["hud"] as? Bool ?? false
+        var y = height - 42
+        let title = NSTextField(labelWithString: "BOTTLES")
+        title.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        title.textColor = .secondaryLabelColor
+        title.frame = NSRect(x: 18, y: y, width: 120, height: 16)
+        view.addSubview(title)
 
-        switch action {
-        case "launch_steam":
-            var args = ["steam", "--scale", scale, "--backend", backend]
-            if hud { args.append("--hud") }
-            runCLI(args: args, taskName: "Launching Windows Steam...")
+        let addBtn = NSButton(image: symbolImage("plus", size: 12), target: self, action: #selector(newBottleAction))
+        addBtn.isBordered = false
+        addBtn.frame = NSRect(x: width - 36, y: y - 2, width: 20, height: 20)
+        view.addSubview(addBtn)
+        y -= 36
 
-        case "launch_epic":
-            var args = ["epic", "--backend", backend]
-            if hud { args.append("--hud") }
-            runCLI(args: args, taskName: "Launching Epic Games Store...")
+        // Default Bottle Row
+        let bottleRow = NSBox(frame: NSRect(x: 8, y: y, width: width - 16, height: 46))
+        bottleRow.boxType = .custom
+        bottleRow.cornerRadius = 6
+        bottleRow.borderWidth = 0
+        bottleRow.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.18)
+        view.addSubview(bottleRow)
 
-        case "choose_exe":
-            selectAndRunCustomExe(backend: backend, hud: hud)
+        let icon = NSImageView(frame: NSRect(x: 10, y: 13, width: 20, height: 20))
+        icon.image = symbolImage("cylinder.split.1x2.fill", size: 16, color: .controlAccentColor)
+        bottleRow.addSubview(icon)
 
-        case "open_drive_c":
-            let url = URL(fileURLWithPath: prefixPath + "/drive_c")
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-            sendNotificationToUI("Opened virtual C: drive in Finder.")
+        let t = NSTextField(labelWithString: "Default")
+        t.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        t.frame = NSRect(x: 36, y: 22, width: 120, height: 18)
+        bottleRow.addSubview(t)
 
-        case "run_wine_tool":
-            if let tool = data["tool"] as? String {
-                runCLI(args: [tool], taskName: "Opening \(tool)...")
-            }
+        let s = NSTextField(labelWithString: "Windows 10 64-bit")
+        s.font = NSFont.systemFont(ofSize: 10)
+        s.textColor = .secondaryLabelColor
+        s.frame = NSRect(x: 36, y: 7, width: 120, height: 14)
+        bottleRow.addSubview(s)
+        y -= 52
 
-        case "kill_all":
-            runCLI(args: ["kill"], taskName: "Stopping all Wine processes...")
+        // Secondary Bottle Row
+        let row2 = NSView(frame: NSRect(x: 8, y: y, width: width - 16, height: 40))
+        let icon2 = NSImageView(frame: NSRect(x: 10, y: 10, width: 20, height: 20))
+        icon2.image = symbolImage("shippingbox.fill", size: 15, color: .secondaryLabelColor)
+        row2.addSubview(icon2)
 
-        default:
-            break
+        let t2 = NSTextField(labelWithString: "Steam")
+        t2.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        t2.textColor = .secondaryLabelColor
+        t2.frame = NSRect(x: 36, y: 20, width: 120, height: 16)
+        row2.addSubview(t2)
+
+        let s2 = NSTextField(labelWithString: "Isolated Bottle")
+        s2.font = NSFont.systemFont(ofSize: 10)
+        s2.textColor = .tertiaryLabelColor
+        s2.frame = NSRect(x: 36, y: 5, width: 120, height: 14)
+        row2.addSubview(s2)
+        view.addSubview(row2)
+
+        // Bottom Button: "Install Application into Bottle..."
+        let installBtn = NSButton(title: "Install Application...", target: self, action: #selector(chooseAndRunExe))
+        installBtn.bezelStyle = .rounded
+        installBtn.frame = NSRect(x: 10, y: 14, width: width - 20, height: 32)
+        view.addSubview(installBtn)
+
+        return view
+    }
+
+    // ==========================================
+    // 2. CENTER PANEL: EXACT CrossOver IconCollectionView
+    // ==========================================
+    func buildCrossOverIconCollectionView(width: CGFloat, height: CGFloat) -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        view.autoresizingMask = [.width, .height]
+
+        var y = height - 50
+        // Top Bottle Title
+        let bTitle = NSTextField(labelWithString: "Default")
+        bTitle.font = NSFont.systemFont(ofSize: 20, weight: .bold)
+        bTitle.frame = NSRect(x: 28, y: y, width: 300, height: 24)
+        view.addSubview(bTitle)
+
+        let bType = NSTextField(labelWithString: "Windows 10 64-bit • Ready")
+        bType.font = NSFont.systemFont(ofSize: 11)
+        bType.textColor = .secondaryLabelColor
+        bType.frame = NSRect(x: 28, y: y - 18, width: 300, height: 16)
+        view.addSubview(bType)
+        y -= 40
+
+        // Separator
+        let sep = NSBox(frame: NSRect(x: 28, y: y, width: width - 56, height: 1))
+        sep.boxType = .separator
+        sep.autoresizingMask = [.width]
+        view.addSubview(sep)
+        y -= 50
+
+        // Program Icon Grid (80x80 icons, matching CrossOver LauncherIconView)
+        // Icon 1: Steam
+        let steamItem = createLauncherIconItem(
+            name: "Steam",
+            symbolName: "gamecontroller.fill",
+            color: .systemBlue,
+            action: #selector(launchSteam),
+            x: 40,
+            y: y
+        )
+        view.addSubview(steamItem)
+
+        // Icon 2: Epic Games
+        let epicItem = createLauncherIconItem(
+            name: "Epic Games",
+            symbolName: "bolt.shield.fill",
+            color: .systemPurple,
+            action: #selector(launchEpic),
+            x: 160,
+            y: y
+        )
+        view.addSubview(epicItem)
+
+        // Icon 3: Install Application / Run Command
+        let runItem = createLauncherIconItem(
+            name: "Run Command...",
+            symbolName: "play.circle.fill",
+            color: .systemGreen,
+            action: #selector(chooseAndRunExe),
+            x: 280,
+            y: y
+        )
+        view.addSubview(runItem)
+
+        return view
+    }
+
+    func createLauncherIconItem(
+        name: String,
+        symbolName: String,
+        color: NSColor,
+        action: Selector,
+        x: CGFloat,
+        y: CGFloat
+    ) -> NSView {
+        let item = NSView(frame: NSRect(x: x, y: y, width: 88, height: 88))
+
+        // Icon Box
+        let iconBox = NSBox(frame: NSRect(x: 14, y: 28, width: 60, height: 60))
+        iconBox.boxType = .custom
+        iconBox.cornerRadius = 14
+        iconBox.borderWidth = 1
+        iconBox.borderColor = .separatorColor
+        iconBox.fillColor = color.withAlphaComponent(0.12)
+        item.addSubview(iconBox)
+
+        let iv = NSImageView(frame: NSRect(x: 15, y: 15, width: 30, height: 30))
+        iv.image = symbolImage(symbolName, size: 24, color: color)
+        iconBox.addSubview(iv)
+
+        let label = NSTextField(labelWithString: name)
+        label.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        label.alignment = .center
+        label.frame = NSRect(x: 0, y: 4, width: 88, height: 18)
+        item.addSubview(label)
+
+        let btn = NSButton(frame: NSRect(x: 0, y: 0, width: 88, height: 88))
+        btn.title = ""
+        btn.isTransparent = true
+        btn.target = self
+        btn.action = action
+        item.addSubview(btn)
+
+        return item
+    }
+
+    // ==========================================
+    // 3. RIGHT INSPECTOR: EXACT CrossOver BottleView
+    // ==========================================
+    func buildCrossOverInspector(width: CGFloat, height: CGFloat) -> NSView {
+        let view = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
+
+        var y = height - 42
+
+        // Section: Graphics
+        let gHeader = NSTextField(labelWithString: "Graphics")
+        gHeader.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        gHeader.textColor = .secondaryLabelColor
+        gHeader.frame = NSRect(x: 16, y: y, width: 200, height: 16)
+        view.addSubview(gHeader)
+        y -= 26
+
+        d3dMetalCheck = NSButton(checkboxWithTitle: "D3DMetal", target: nil, action: nil)
+        d3dMetalCheck.state = .on
+        d3dMetalCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
+        view.addSubview(d3dMetalCheck)
+        y -= 24
+
+        msyncCheck = NSButton(checkboxWithTitle: "MSync", target: nil, action: nil)
+        msyncCheck.state = .on
+        msyncCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
+        view.addSubview(msyncCheck)
+        y -= 24
+
+        highResCheck = NSButton(checkboxWithTitle: "High Resolution Mode", target: nil, action: nil)
+        highResCheck.state = .on
+        highResCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
+        view.addSubview(highResCheck)
+        y -= 24
+
+        hudCheck = NSButton(checkboxWithTitle: "Metal Performance HUD", target: nil, action: nil)
+        hudCheck.frame = NSRect(x: 16, y: y, width: 220, height: 20)
+        view.addSubview(hudCheck)
+        y -= 34
+
+        // Section: Bottle Details
+        let dHeader = NSTextField(labelWithString: "Bottle Details")
+        dHeader.font = NSFont.systemFont(ofSize: 11, weight: .bold)
+        dHeader.textColor = .secondaryLabelColor
+        dHeader.frame = NSRect(x: 16, y: y, width: 200, height: 16)
+        view.addSubview(dHeader)
+        y -= 22
+
+        let bType = NSTextField(labelWithString: "Bottle Type: Win 10 (64-bit)")
+        bType.font = NSFont.systemFont(ofSize: 11)
+        bType.frame = NSRect(x: 16, y: y, width: 220, height: 16)
+        view.addSubview(bType)
+        y -= 18
+
+        let bArch = NSTextField(labelWithString: "Arch: Apple Silicon (M4 Max)")
+        bArch.font = NSFont.systemFont(ofSize: 11)
+        bArch.textColor = .secondaryLabelColor
+        bArch.frame = NSRect(x: 16, y: y, width: 220, height: 16)
+        view.addSubview(bArch)
+        y -= 34
+
+        // Actions (Matching CrossOver BottleView.nib buttons)
+        let actions: [(String, String, Selector)] = [
+            ("Run Command...", "play.circle", #selector(chooseAndRunExe)),
+            ("Open C: Drive", "internaldrive", #selector(openDriveC)),
+            ("Wine Configuration", "gearshape", #selector(openWinecfg)),
+            ("Registry Editor", "pencil.and.list.clipboard", #selector(openRegedit)),
+            ("Task Manager", "chart.bar.xaxis", #selector(openTaskmgr))
+        ]
+
+        for (label, sym, sel) in actions {
+            let btn = NSButton(title: "  " + label, target: self, action: sel)
+            btn.image = symbolImage(sym, size: 12)
+            btn.imagePosition = .imageLeft
+            btn.bezelStyle = .rounded
+            btn.alignment = .left
+            btn.frame = NSRect(x: 14, y: y, width: 232, height: 28)
+            view.addSubview(btn)
+            y -= 32
+        }
+
+        y -= 4
+        let quitBtn = NSButton(title: "  Quit All Applications", target: self, action: #selector(killProcesses))
+        quitBtn.image = symbolImage("xmark.circle.fill", size: 12, color: .systemRed)
+        quitBtn.imagePosition = .imageLeft
+        quitBtn.bezelStyle = .rounded
+        quitBtn.contentTintColor = .systemRed
+        quitBtn.frame = NSRect(x: 14, y: y, width: 232, height: 30)
+        view.addSubview(quitBtn)
+
+        return view
+    }
+
+    // ==========================================
+    // HELPERS & EXECUTION
+    // ==========================================
+    func symbolImage(_ name: String, size: CGFloat, color: NSColor? = nil) -> NSImage {
+        let config = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
+        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            img.isTemplate = (color == nil)
+            return img
+        }
+        return NSImage()
+    }
+
+    @objc func launchSteam() {
+        var args = ["steam", "--scale", highResCheck.state == .on ? "auto" : "1.0"]
+        if hudCheck.state == .on { args.append("--hud") }
+        runCLI(args: args)
+    }
+
+    @objc func launchEpic() {
+        var args = ["epic"]
+        if hudCheck.state == .on { args.append("--hud") }
+        runCLI(args: args)
+    }
+
+    @objc func chooseAndRunExe() {
+        let panel = NSOpenPanel()
+        panel.title = "Run Command..."
+        panel.allowedContentTypes = []
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            var args = ["run", url.path]
+            if hudCheck.state == .on { args.append("--hud") }
+            runCLI(args: args)
         }
     }
 
-    func selectAndRunCustomExe(backend: String, hud: Bool) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            let panel = NSOpenPanel()
-            panel.title = "Select Windows Executable (.exe)"
-            panel.allowedContentTypes = []
-            panel.allowsMultipleSelection = false
-            panel.canChooseDirectories = false
-            panel.canChooseFiles = true
-
-            if panel.runModal() == .OK, let url = panel.url {
-                var args = ["run", url.path, "--backend", backend]
-                if hud { args.append("--hud") }
-                self.runCLI(args: args, taskName: "Running: \(url.lastPathComponent)...")
-            }
-        }
+    @objc func openDriveC() {
+        let url = URL(fileURLWithPath: prefixPath + "/drive_c")
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    func runCLI(args: [String], taskName: String) {
-        sendNotificationToUI(taskName)
+    @objc func openWinecfg() {
+        runCLI(args: ["winecfg"])
+    }
+
+    @objc func openRegedit() {
+        runCLI(args: ["regedit"])
+    }
+
+    @objc func openTaskmgr() {
+        runCLI(args: ["taskmgr"])
+    }
+
+    @objc func killProcesses() {
+        runCLI(args: ["kill"])
+    }
+
+    @objc func newBottleAction() {
+        let alert = NSAlert()
+        alert.messageText = "New Bottle"
+        alert.informativeText = "Active bottle 'Default' is ready with Windows 10 64-bit and Apple Metal."
+        alert.runModal()
+    }
+
+    func runCLI(args: [String]) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             let process = Process()
             process.executableURL = URL(fileURLWithPath: self.runnerBinary)
             process.arguments = args
-
-            do {
-                try process.run()
-                DispatchQueue.main.async {
-                    self.sendNotificationToUI("Active: \(args.joined(separator: " "))")
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.sendNotificationToUI("Error: \(error.localizedDescription)")
-                }
-            }
+            try? process.run()
         }
-    }
-
-    func sendNotificationToUI(_ message: String) {
-        let escaped = message.replacingOccurrences(of: "'", with: "\\'")
-        let js = "window.showStatus('\(escaped)');"
-        DispatchQueue.main.async {
-            self.webView.evaluateJavaScript(js, completionHandler: nil)
-        }
-    }
-
-    // MARK: - HTML/CSS UI
-    func loadAppUI() {
-        let html = """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>ma-proton</title>
-            <style>
-                :root {
-                    --bg-base: #111419;
-                    --bg-surface: #181c24;
-                    --bg-card: #1e232d;
-                    --bg-card-hover: #262c38;
-                    --border: #2c3340;
-                    --border-focus: #0071e3;
-                    --accent: #0071e3;
-                    --accent-purple: #7852ff;
-                    --accent-green: #30d158;
-                    --accent-orange: #ff9f0a;
-                    --accent-red: #ff453a;
-                    --text-primary: #f5f5f7;
-                    --text-secondary: #86868b;
-                    --text-muted: #555b68;
-                }
-
-                * {
-                    box-sizing: border-box;
-                    margin: 0;
-                    padding: 0;
-                    user-select: none;
-                    -webkit-user-select: none;
-                }
-
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
-                    background-color: var(--bg-base);
-                    color: var(--text-primary);
-                    height: 100vh;
-                    overflow: hidden;
-                    display: flex;
-                    flex-direction: column;
-                }
-
-                /* Window Dragging Header */
-                .titlebar-drag-region {
-                    height: 48px;
-                    -webkit-app-region: drag;
-                    display: flex;
-                    align-items: center;
-                    padding-left: 80px;
-                    padding-right: 24px;
-                    border-bottom: 1px solid var(--border);
-                    background: rgba(24, 28, 36, 0.7);
-                    backdrop-filter: blur(20px);
-                    -webkit-backdrop-filter: blur(20px);
-                }
-
-                .brand-title {
-                    font-size: 13px;
-                    font-weight: 600;
-                    letter-spacing: 0.3px;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-
-                .brand-tag {
-                    font-size: 10px;
-                    font-weight: 700;
-                    text-transform: uppercase;
-                    background: rgba(0, 113, 227, 0.2);
-                    color: #2997ff;
-                    padding: 2px 7px;
-                    border-radius: 4px;
-                    border: 1px solid rgba(41, 151, 255, 0.3);
-                }
-
-                .system-info {
-                    margin-left: auto;
-                    font-size: 11px;
-                    color: var(--text-secondary);
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    -webkit-app-region: no-drag;
-                }
-
-                .status-dot {
-                    width: 7px;
-                    height: 7px;
-                    border-radius: 50%;
-                    background: var(--accent-green);
-                    box-shadow: 0 0 8px rgba(48, 209, 88, 0.6);
-                }
-
-                /* Layout */
-                .app-body {
-                    flex: 1;
-                    display: flex;
-                    overflow: hidden;
-                }
-
-                /* Sidebar */
-                .sidebar {
-                    width: 220px;
-                    background: rgba(18, 21, 27, 0.5);
-                    border-right: 1px solid var(--border);
-                    display: flex;
-                    flex-direction: column;
-                    padding: 18px 12px;
-                }
-
-                .sidebar-section-title {
-                    font-size: 10px;
-                    font-weight: 700;
-                    letter-spacing: 0.8px;
-                    text-transform: uppercase;
-                    color: var(--text-muted);
-                    padding: 0 10px 10px;
-                }
-
-                .bottle-item {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    padding: 10px 12px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    background: rgba(0, 113, 227, 0.15);
-                    border: 1px solid rgba(0, 113, 227, 0.3);
-                    margin-bottom: 6px;
-                }
-
-                .bottle-icon {
-                    width: 24px;
-                    height: 24px;
-                    fill: #2997ff;
-                }
-
-                .bottle-details {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 2px;
-                }
-
-                .bottle-name {
-                    font-size: 13px;
-                    font-weight: 600;
-                }
-
-                .bottle-sub {
-                    font-size: 10px;
-                    color: var(--text-secondary);
-                }
-
-                /* Main Content Area */
-                .main-view {
-                    flex: 1;
-                    overflow-y: auto;
-                    padding: 26px 32px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 28px;
-                }
-
-                .section-header {
-                    display: flex;
-                    align-items: baseline;
-                    justify-content: space-between;
-                }
-
-                .section-title {
-                    font-size: 11px;
-                    font-weight: 700;
-                    letter-spacing: 0.7px;
-                    text-transform: uppercase;
-                    color: var(--text-muted);
-                }
-
-                /* App Grid */
-                .apps-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-                    gap: 16px;
-                }
-
-                .app-card {
-                    background: var(--bg-card);
-                    border: 1px solid var(--border);
-                    border-radius: 12px;
-                    padding: 18px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 14px;
-                    cursor: pointer;
-                    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-                }
-
-                .app-card:hover {
-                    background: var(--bg-card-hover);
-                    border-color: #3e4758;
-                    transform: translateY(-2px);
-                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-                }
-
-                .app-card-top {
-                    display: flex;
-                    align-items: center;
-                    gap: 14px;
-                }
-
-                .app-card-icon {
-                    width: 44px;
-                    height: 44px;
-                    border-radius: 10px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
-                }
-
-                .app-card-icon svg {
-                    width: 26px;
-                    height: 26px;
-                }
-
-                .app-card-meta {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 3px;
-                }
-
-                .app-card-title {
-                    font-size: 14px;
-                    font-weight: 600;
-                    color: var(--text-primary);
-                }
-
-                .app-card-subtitle {
-                    font-size: 11px;
-                    color: var(--text-secondary);
-                }
-
-                .app-card-desc {
-                    font-size: 12px;
-                    color: var(--text-secondary);
-                    line-height: 1.4;
-                }
-
-                .app-card-btn {
-                    margin-top: auto;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 8px;
-                    background: rgba(255, 255, 255, 0.08);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
-                    color: var(--text-primary);
-                    padding: 8px 14px;
-                    border-radius: 6px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    transition: background 0.15s ease;
-                }
-
-                .app-card:hover .app-card-btn {
-                    background: var(--accent);
-                    border-color: var(--accent);
-                    color: #fff;
-                }
-
-                /* Control Panel Box */
-                .control-panel {
-                    background: var(--bg-surface);
-                    border: 1px solid var(--border);
-                    border-radius: 12px;
-                    padding: 20px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 18px;
-                }
-
-                .controls-row {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 16px;
-                }
-
-                .control-group {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 8px;
-                }
-
-                .control-label {
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: var(--text-secondary);
-                }
-
-                .pills-group {
-                    display: flex;
-                    background: rgba(0, 0, 0, 0.3);
-                    border: 1px solid var(--border);
-                    border-radius: 8px;
-                    padding: 3px;
-                    gap: 3px;
-                }
-
-                .pill-btn {
-                    flex: 1;
-                    background: transparent;
-                    border: none;
-                    color: var(--text-secondary);
-                    padding: 6px 10px;
-                    border-radius: 6px;
-                    font-size: 11px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    text-align: center;
-                    transition: all 0.15s ease;
-                }
-
-                .pill-btn.active {
-                    background: var(--bg-card-hover);
-                    color: #fff;
-                    font-weight: 600;
-                    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-                }
-
-                /* Toggles */
-                .toggles-group {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 20px;
-                    padding-top: 6px;
-                    border-top: 1px solid rgba(255, 255, 255, 0.06);
-                }
-
-                .switch-container {
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    cursor: pointer;
-                }
-
-                .switch-input {
-                    appearance: none;
-                    -webkit-appearance: none;
-                    width: 36px;
-                    height: 20px;
-                    border-radius: 12px;
-                    background: #333842;
-                    position: relative;
-                    outline: none;
-                    cursor: pointer;
-                    transition: background 0.2s ease;
-                }
-
-                .switch-input::after {
-                    content: '';
-                    position: absolute;
-                    width: 16px;
-                    height: 16px;
-                    border-radius: 50%;
-                    background: #fff;
-                    top: 2px;
-                    left: 2px;
-                    transition: transform 0.2s ease;
-                }
-
-                .switch-input:checked {
-                    background: var(--accent);
-                }
-
-                .switch-input:checked::after {
-                    transform: translateX(16px);
-                }
-
-                .switch-text {
-                    font-size: 12px;
-                    color: var(--text-primary);
-                }
-
-                /* Tools Bar */
-                .tools-grid {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                }
-
-                .tool-btn {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid var(--border);
-                    color: var(--text-primary);
-                    padding: 8px 14px;
-                    border-radius: 7px;
-                    font-size: 11px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    transition: all 0.15s ease;
-                }
-
-                .tool-btn:hover {
-                    background: rgba(255, 255, 255, 0.1);
-                    border-color: #4a5468;
-                }
-
-                .tool-btn.danger {
-                    color: var(--accent-red);
-                    border-color: rgba(255, 69, 58, 0.3);
-                    background: rgba(255, 69, 58, 0.08);
-                }
-
-                .tool-btn.danger:hover {
-                    background: var(--accent-red);
-                    color: #fff;
-                }
-
-                /* Bottom Status Bar */
-                .status-bar {
-                    height: 32px;
-                    border-top: 1px solid var(--border);
-                    background: rgba(18, 21, 27, 0.6);
-                    padding: 0 24px;
-                    display: flex;
-                    align-items: center;
-                    font-size: 11px;
-                    color: var(--text-secondary);
-                }
-            </style>
-        </head>
-        <body>
-            <div class="titlebar-drag-region">
-                <div class="brand-title">
-                    <span>ma-proton</span>
-                    <span class="brand-tag">Metal 3 Native</span>
-                </div>
-                <div class="system-info">
-                    <div class="status-dot"></div>
-                    <span>Apple Silicon M4 Max</span>
-                    <span>•</span>
-                    <span>MSync Active</span>
-                </div>
-            </div>
-
-            <div class="app-body">
-                <div class="sidebar">
-                    <div class="sidebar-section-title">Bottles</div>
-                    <div class="bottle-item">
-                        <svg class="bottle-icon" viewBox="0 0 24 24">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/>
-                        </svg>
-                        <div class="bottle-details">
-                            <div class="bottle-name">Default</div>
-                            <div class="bottle-sub">Windows 10 64-bit</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="main-view">
-                    <div>
-                        <div class="section-header">
-                            <div class="section-title">Applications</div>
-                        </div>
-                        <div class="apps-grid" style="margin-top: 14px;">
-                            <!-- Steam Card -->
-                            <div class="app-card" onclick="triggerAction('launch_steam')">
-                                <div class="app-card-top">
-                                    <div class="app-card-icon" style="background: rgba(0, 113, 227, 0.15);">
-                                        <svg viewBox="0 0 24 24" fill="#2997ff">
-                                            <path d="M12 2a10 10 0 0 0-10 10c0 4.76 3.32 8.74 7.78 9.73l2.84-4.14a3 3 0 0 1-.62-1.79 3 3 0 0 1 .49-1.63L8.9 11.75a4.5 4.5 0 0 1 7.6-3.25 4.5 4.5 0 0 1 1.05 4.9l-2.73 1.9a3 3 0 0 1-2.82 2.7l-2.6 3.8A10 10 0 0 0 12 22a10 10 0 0 0 10-10A10 10 0 0 0 12 2z"/>
-                                        </svg>
-                                    </div>
-                                    <div class="app-card-meta">
-                                        <div class="app-card-title">Valve Steam</div>
-                                        <div class="app-card-subtitle">Windows Gaming Client</div>
-                                    </div>
-                                </div>
-                                <div class="app-card-desc">
-                                    Full Windows store and library unlocked with Direct3D to Metal translation.
-                                </div>
-                                <div class="app-card-btn">Launch Steam</div>
-                            </div>
-
-                            <!-- Epic Games Card -->
-                            <div class="app-card" onclick="triggerAction('launch_epic')">
-                                <div class="app-card-top">
-                                    <div class="app-card-icon" style="background: rgba(120, 82, 255, 0.15);">
-                                        <svg viewBox="0 0 24 24" fill="#a78bfa">
-                                            <path d="M12 2L4 6v12l8 4 8-4V6l-8-4zm0 2.5l5.5 2.75v8.5L12 18.5l-5.5-2.75v-8.5L12 4.5z"/>
-                                        </svg>
-                                    </div>
-                                    <div class="app-card-meta">
-                                        <div class="app-card-title">Epic Games Store</div>
-                                        <div class="app-card-subtitle">Launcher & Library</div>
-                                    </div>
-                                </div>
-                                <div class="app-card-desc">
-                                    Windows Epic Games Storefront and Unreal game engine titles.
-                                </div>
-                                <div class="app-card-btn">Launch Epic Games</div>
-                            </div>
-
-                            <!-- Standalone EXE Card -->
-                            <div class="app-card" onclick="triggerAction('choose_exe')">
-                                <div class="app-card-top">
-                                    <div class="app-card-icon" style="background: rgba(48, 209, 88, 0.15);">
-                                        <svg viewBox="0 0 24 24" fill="#30d158">
-                                            <path d="M8 5v14l11-7z"/>
-                                        </svg>
-                                    </div>
-                                    <div class="app-card-meta">
-                                        <div class="app-card-title">Run .EXE Binary</div>
-                                        <div class="app-card-subtitle">Custom Game or Installer</div>
-                                    </div>
-                                </div>
-                                <div class="app-card-desc">
-                                    Execute any portable Windows game, setup installer, or utility.
-                                </div>
-                                <div class="app-card-btn">Select Executable...</div>
-                            </div>
-
-                            <!-- Drive C: Card -->
-                            <div class="app-card" onclick="triggerAction('open_drive_c')">
-                                <div class="app-card-top">
-                                    <div class="app-card-icon" style="background: rgba(255, 159, 10, 0.15);">
-                                        <svg viewBox="0 0 24 24" fill="#ff9f0a">
-                                            <path d="M4 6h16v12H4z M2 4v16h20V4H2zm6 8h2v2H8v-2z"/>
-                                        </svg>
-                                    </div>
-                                    <div class="app-card-meta">
-                                        <div class="app-card-title">Virtual C: Drive</div>
-                                        <div class="app-card-subtitle">Windows Filesystem</div>
-                                    </div>
-                                </div>
-                                <div class="app-card-desc">
-                                    Browse Program Files, save files, and game directories in Finder.
-                                </div>
-                                <div class="app-card-btn">Open in Finder</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Bottle Configuration Box -->
-                    <div class="control-panel">
-                        <div class="controls-row">
-                            <div class="control-group">
-                                <div class="control-label">Screen Scaling</div>
-                                <div class="pills-group" id="scaleGroup">
-                                    <button class="pill-btn active" onclick="setScale('auto', this)">Auto</button>
-                                    <button class="pill-btn" onclick="setScale('1.5', this)">1.50x</button>
-                                    <button class="pill-btn" onclick="setScale('1.75', this)">1.75x</button>
-                                    <button class="pill-btn" onclick="setScale('2.0', this)">2.00x</button>
-                                </div>
-                            </div>
-
-                            <div class="control-group">
-                                <div class="control-label">Graphics Engine</div>
-                                <div class="pills-group" id="backendGroup">
-                                    <button class="pill-btn active" onclick="setBackend('gptk', this)">D3DMetal</button>
-                                    <button class="pill-btn" onclick="setBackend('dxmt', this)">DXMT</button>
-                                    <button class="pill-btn" onclick="setBackend('dxvk', this)">DXVK</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="toggles-group">
-                            <label class="switch-container">
-                                <input type="checkbox" class="switch-input" id="msyncCheck" checked>
-                                <span class="switch-text">MSync Fast Synchronization</span>
-                            </label>
-                            <label class="switch-container">
-                                <input type="checkbox" class="switch-input" id="hudCheck">
-                                <span class="switch-text">Metal Performance HUD</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Maintenance Tools -->
-                    <div>
-                        <div class="section-title" style="margin-bottom: 12px;">Bottle Maintenance</div>
-                        <div class="tools-grid">
-                            <button class="tool-btn" onclick="triggerWineTool('winecfg')">Wine Configuration</button>
-                            <button class="tool-btn" onclick="triggerWineTool('regedit')">Registry Editor</button>
-                            <button class="tool-btn" onclick="triggerWineTool('taskmgr')">Task Manager</button>
-                            <button class="tool-btn" onclick="triggerWineTool('cmd')">Command Prompt</button>
-                            <button class="tool-btn danger" onclick="triggerAction('kill_all')">Stop All Processes</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="status-bar" id="statusBar">
-                Ready • ma-proton translation engine initialized.
-            </div>
-
-            <script>
-                let currentScale = 'auto';
-                let currentBackend = 'gptk';
-
-                function setScale(val, btn) {
-                    currentScale = val;
-                    document.querySelectorAll('#scaleGroup .pill-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                }
-
-                function setBackend(val, btn) {
-                    currentBackend = val;
-                    document.querySelectorAll('#backendGroup .pill-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                }
-
-                function triggerAction(actionName) {
-                    const hud = document.getElementById('hudCheck').checked;
-                    window.webkit.messageHandlers.maProton.postMessage({
-                        action: actionName,
-                        scale: currentScale,
-                        backend: currentBackend,
-                        hud: hud
-                    });
-                }
-
-                function triggerWineTool(toolName) {
-                    window.webkit.messageHandlers.maProton.postMessage({
-                        action: 'run_wine_tool',
-                        tool: toolName
-                    });
-                }
-
-                window.showStatus = function(msg) {
-                    document.getElementById('statusBar').innerText = msg;
-                };
-            </script>
-        </body>
-        </html>
-        """
-        webView.loadHTMLString(html, baseURL: nil)
     }
 }
 
 let app = NSApplication.shared
-let delegate = AppDelegate()
+let delegate = CrossOverAppController()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 app.run()
